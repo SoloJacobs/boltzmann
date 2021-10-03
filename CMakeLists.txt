@@ -1,0 +1,1 @@
+project(Name LANGUAGES CXX)
