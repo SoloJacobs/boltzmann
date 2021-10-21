@@ -132,7 +132,7 @@ private:
 int main() {
   using namespace std::chrono_literals;
 
-  auto fourcc = cv::VideoWriter::fourcc('m', 'p', '4', 'v');
+  auto fourcc = cv::VideoWriter::fourcc('a', 'v', 'c', '1');
   cv::VideoWriter vw("out.mp4", fourcc, 10., cv::Size(10, 10));
   cv::Mat a(10, 10, CV_8U, cv::Scalar(0));
   for (auto i = 0; i < 1000; ++i)
