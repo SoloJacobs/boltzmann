@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <array>
 #include <iostream>
+#include <limits>
 #include <thread>
 #include <vector>
 
@@ -129,14 +130,18 @@ private:
   size_t width;
 };
 
+using uchar = unsigned char;
+cv::Mat to_render(Sol::Matrix<size_t> mass) {
+  cv::Mat im(cv::Size(mass.num_cols(), mass.num_rows()), CV_8UC1);
+  auto to_format = [](size_t i) {
+    return static_cast<uchar>(i * std::numeric_limits<uchar>::max() / 4);
+  };
+  std::transform(mass.begin(), mass.end(), im.begin<uchar>(), to_format);
+  return im;
+}
+
 int main() {
   using namespace std::chrono_literals;
-
-  auto fourcc = cv::VideoWriter::fourcc('a', 'v', 'c', '1');
-  cv::VideoWriter vw("out.mp4", fourcc, 10., cv::Size(10, 10));
-  cv::Mat a(10, 10, CV_8U, cv::Scalar(0));
-  for (auto i = 0; i < 1000; ++i)
-    vw << a;
 
   Sol::Matrix<bool> init(4, 10 * 10);
   init(ParticleGraph::NORTH, 55) = true;
@@ -145,9 +150,15 @@ int main() {
   init(ParticleGraph::WEST, 33) = true;
   ParticleGraph PG(init, 10, 10);
 
+  cv::VideoWriter output;
+  auto inImg = to_render(PG.GetMass());
+  output.open("live1.mp4", cv::VideoWriter::fourcc('a', 'v', 'c', '1'), 15.0,
+              inImg.size(), false);
+
   for (size_t i = 0; i < 25; ++i) {
     clear();
     auto vis = PG.GetMass();
+    output.write(to_render(PG.GetMass()));
     std::cout << vis;
     std::this_thread::sleep_for(0.01s);
     PG.Update();
