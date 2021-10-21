@@ -5,6 +5,10 @@
 #include <thread>
 #include <vector>
 
+#include <opencv4/opencv2/core/mat.hpp>
+#include <opencv4/opencv2/core/types.hpp>
+#include <opencv4/opencv2/videoio.hpp>
+
 template <typename Result_container_t>
 void plot(size_t width, size_t height, Result_container_t cont, double dt) {
   for (const auto &iteration : cont) {
@@ -42,7 +46,7 @@ class ParticleGraph {
 public:
   enum Direction { NORTH = 0, SOUTH = 1, WEST = 2, EAST = 3 };
 
-  ParticleGraph(Matrix<bool> initial_matrix, size_t height, size_t width)
+  ParticleGraph(Sol::Matrix<bool> initial_matrix, size_t height, size_t width)
       : velocities(initial_matrix), height(height), width(width){};
 
   void Update() {
@@ -50,8 +54,8 @@ public:
     streamingOperator();
   }
 
-  Matrix<size_t> GetMass() {
-    Matrix<size_t> result(height, width);
+  Sol::Matrix<size_t> GetMass() {
+    Sol::Matrix<size_t> result(height, width);
     auto it = result.begin();
     for (auto index = 0; index < velocities.num_cols(); ++index, ++it) {
       *it = velocities(NORTH, index) + velocities(SOUTH, index) +
@@ -106,7 +110,7 @@ private:
   }
 
   void streamingOperator() {
-    Matrix<bool> copied_velocities(velocities);
+    Sol::Matrix<bool> copied_velocities(velocities);
     for (auto index = 0; index <= velocities.num_cols(); ++index) {
       auto neighbours = Neighbours(index);
       velocities(Direction::SOUTH, index) =
@@ -120,7 +124,7 @@ private:
     }
   }
 
-  Matrix<bool> velocities;
+  Sol::Matrix<bool> velocities;
   size_t height;
   size_t width;
 };
@@ -128,16 +132,24 @@ private:
 int main() {
   using namespace std::chrono_literals;
 
-  Matrix<bool> init(4, 10 * 10);
+  auto fourcc = cv::VideoWriter::fourcc('m', 'p', '4', 'v');
+  cv::VideoWriter vw("out.mp4", fourcc, 10., cv::Size(10, 10));
+  cv::Mat a(10, 10, CV_8U, cv::Scalar(0));
+  for (auto i = 0; i < 1000; ++i)
+    vw << a;
+
+  Sol::Matrix<bool> init(4, 10 * 10);
   init(ParticleGraph::NORTH, 55) = true;
   init(ParticleGraph::SOUTH, 55) = true;
+  init(ParticleGraph::EAST, 33) = true;
+  init(ParticleGraph::WEST, 33) = true;
   ParticleGraph PG(init, 10, 10);
 
   for (size_t i = 0; i < 25; ++i) {
     clear();
     auto vis = PG.GetMass();
     std::cout << vis;
-    std::this_thread::sleep_for(0.3s);
+    std::this_thread::sleep_for(0.01s);
     PG.Update();
   }
   return 0;
