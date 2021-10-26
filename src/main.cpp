@@ -9,13 +9,13 @@
 #include <opencv4/opencv2/core/types.hpp>
 #include <opencv4/opencv2/videoio.hpp>
 
-template <typename Result_container_t>
-void plot(size_t width, size_t height, Result_container_t cont, double dt) {
-  for (const auto &iteration : cont) {
-    render(width, height, iteration);
-    std::cout << "\n====\n";
-  }
-}
+// template <typename Result_container_t>
+// void plot(size_t width, size_t height, Result_container_t cont, double dt) {
+//   for (const auto &iteration : cont) {
+//     render(width, height, iteration);
+//     std::cout << "\n====\n";
+//   }
+// }
 
 void clear() { std::cout << "\x1B[2J\x1B[H"; }
 
@@ -57,7 +57,7 @@ public:
   Sol::Matrix<size_t> GetMass() {
     Sol::Matrix<size_t> result(height, width);
     auto it = result.begin();
-    for (auto index = 0; index < velocities.num_cols(); ++index, ++it) {
+    for (size_t index = 0; index < velocities.num_cols(); ++index, ++it) {
       *it = velocities(NORTH, index) + velocities(SOUTH, index) +
             velocities(WEST, index) + velocities(EAST, index);
     }
@@ -101,7 +101,7 @@ private:
   }
 
   void collisionOperator() {
-    for (auto index = 0; index <= velocities.num_cols(); ++index) {
+    for (size_t index = 0; index <= velocities.num_cols(); ++index) {
       std::swap(velocities(Direction::NORTH, index),
                 velocities(Direction::SOUTH, index));
       std::swap(velocities(Direction::WEST, index),
@@ -111,7 +111,7 @@ private:
 
   void streamingOperator() {
     Sol::Matrix<bool> copied_velocities(velocities);
-    for (auto index = 0; index <= velocities.num_cols(); ++index) {
+    for (size_t index = 0; index <= velocities.num_cols(); ++index) {
       auto neighbours = Neighbours(index);
       velocities(Direction::SOUTH, index) =
           copied_velocities(Direction::NORTH, neighbours[Direction::SOUTH]);

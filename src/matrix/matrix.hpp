@@ -54,9 +54,9 @@ public:
 
 private:
   // Members
-  std::vector<T> data_;
   size_type num_rows_;
   size_type num_cols_;
+  std::vector<T> data_;
 
   void row_range_check(size_type i) const;
   void col_range_check(size_type j) const;
