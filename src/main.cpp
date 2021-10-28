@@ -18,8 +18,6 @@
 //   }
 // }
 
-void clear() { std::cout << "\x1B[2J\x1B[H"; }
-
 //       N W S O
 // (0,0) 0 0 0 0
 // (0,1) 0 1 1 0
@@ -140,27 +138,27 @@ cv::Mat to_render(Sol::Matrix<size_t> mass) {
   return im;
 }
 
+constexpr size_t width = 99;
+constexpr size_t height = 99;
+
 int main() {
   using namespace std::chrono_literals;
 
-  Sol::Matrix<bool> init(4, 10 * 10);
+  Sol::Matrix<bool> init(4, width * height);
   init(ParticleGraph::NORTH, 55) = true;
   init(ParticleGraph::SOUTH, 55) = true;
   init(ParticleGraph::EAST, 33) = true;
   init(ParticleGraph::WEST, 33) = true;
-  ParticleGraph PG(init, 10, 10);
+  ParticleGraph PG(init, width, height);
 
   cv::VideoWriter output;
   auto inImg = to_render(PG.GetMass());
-  output.open("live1.mp4", cv::VideoWriter::fourcc('a', 'v', 'c', '1'), 15.0,
-              inImg.size(), false);
+  output.open("build/live1.mp4", cv::VideoWriter::fourcc('a', 'v', 'c', '1'),
+              15.0, inImg.size(), false);
 
-  for (size_t i = 0; i < 25; ++i) {
-    clear();
+  for (size_t i = 0; i < 15 * 60; ++i) {
     auto vis = PG.GetMass();
     output.write(to_render(PG.GetMass()));
-    std::cout << vis;
-    std::this_thread::sleep_for(0.01s);
     PG.Update();
   }
   return 0;
