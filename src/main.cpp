@@ -46,7 +46,12 @@ public:
   enum Direction { NORTH = 0, SOUTH = 1, WEST = 2, EAST = 3 };
 
   ParticleGraph(Sol::Matrix<bool> initial_matrix, size_t height, size_t width)
-      : velocities(initial_matrix), height(height), width(width){};
+      : velocities(initial_matrix), height(height), width(width),
+        neighbour_cache(velocities.num_cols()) {
+    for (size_t vertex = 0; vertex < velocities.num_cols(); ++vertex) {
+      neighbour_cache[vertex] = Neighbours(vertex);
+    }
+  }
 
   void Update() {
     collisionOperator();
@@ -111,7 +116,7 @@ private:
   void streamingOperator() {
     Sol::Matrix<bool> copied_velocities(velocities);
     for (size_t index = 0; index <= velocities.num_cols(); ++index) {
-      auto neighbours = Neighbours(index);
+      auto neighbours = neighbour_cache[index];
       velocities(Direction::SOUTH, index) =
           copied_velocities(Direction::NORTH, neighbours[Direction::SOUTH]);
       velocities(Direction::NORTH, index) =
@@ -126,6 +131,8 @@ private:
   Sol::Matrix<bool> velocities;
   size_t height;
   size_t width;
+
+  std::vector<std::array<size_t, 4>> neighbour_cache;
 };
 
 using uchar = unsigned char;
@@ -138,8 +145,8 @@ cv::Mat to_render(Sol::Matrix<size_t> mass) {
   return im;
 }
 
-constexpr size_t width = 99;
-constexpr size_t height = 99;
+constexpr size_t width = 400;
+constexpr size_t height = 400;
 
 int main() {
   using namespace std::chrono_literals;
@@ -157,6 +164,7 @@ int main() {
               15.0, inImg.size(), false);
 
   for (size_t i = 0; i < 15 * 60; ++i) {
+    std::cout << i << '\n';
     auto vis = PG.GetMass();
     output.write(to_render(PG.GetMass()));
     PG.Update();
