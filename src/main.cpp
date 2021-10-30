@@ -3,6 +3,7 @@
 #include <array>
 #include <iostream>
 #include <limits>
+#include <optional>
 #include <random>
 #include <thread>
 #include <vector>
@@ -44,13 +45,29 @@
 class ParticleGraph {
 
 public:
-  enum Direction { NORTH, SOUTH, EAST, WEST };
+  enum class Direction { N, NE, E, SE, S, SW, W, NW };
+  enum class BoundaryType { PERIODIC, REFLECTING };
 
   struct Position_T {
     Position_T() = default;
-    Position_T(int x, int y) : x(x), y(y) {}
-    int x;
-    int y;
+    Position_T(size_t x, size_t y) : x(x), y(y) {}
+    size_t x;
+    size_t y;
+  };
+
+  struct Boundary_T {
+    Boundary_T(Direction direction, BoundaryType type)
+        : direction(direction), type(type) {}
+    Direction direction;
+    BoundaryType type;
+  };
+
+  struct Neighbour_T {
+    Position_T north;
+    Position_T south;
+    Position_T east;
+    Position_T west;
+    std::optional<Boundary_T> boundary;
   };
 
   struct Element_T {
@@ -67,35 +84,79 @@ public:
     bool east;
     bool west;
 
-    int mass() const { return north + south + east + west; }
+    size_t mass() const { return north + south + east + west; }
   };
 
-  ParticleGraph(Sol::Matrix<Element_T> initial_matrix, int height, int width)
-      : velocities(initial_matrix), height(height), width(width){};
+  ParticleGraph(Sol::Matrix<Element_T> initial_matrix, size_t height,
+                size_t width, BoundaryType boundary_type)
+      : velocities(initial_matrix), height(height), width(width),
+        neighbours_cache(Sol::Matrix<Neighbour_T>(width, height)),
+        boundary_type(boundary_type) {
+    std::for_each(
+        velocities.begin(), velocities.end(), [this](const Element_T &elem) {
+          neighbours_cache(elem.pos.x, elem.pos.y) = Neighbours(elem.pos);
+        });
+  };
 
   void Update() {
+    streamingOperator_reflect();
     collisionOperator();
-    streamingOperator();
   }
 
-  Sol::Matrix<int> GetMass() {
-    Sol::Matrix<int> result(height, width);
+  Sol::Matrix<size_t> GetMass() {
+    Sol::Matrix<size_t> result(height, width);
     std::transform(velocities.begin(), velocities.end(), result.begin(),
                    [](const Element_T &elem) { return elem.mass(); });
     return result;
   }
 
 private:
-  std::array<Position_T, 4> Neighbours(Position_T vertex) {
-    std::array<Position_T, 4> result;
-    result[Direction::NORTH] =
-        Position_T(vertex.x, (vertex.y + height - 1) % height);
-    result[Direction::SOUTH] =
-        Position_T(vertex.x, (vertex.y + height + 1) % height);
-    result[Direction::EAST] =
-        Position_T((vertex.x + width + 1) % width, vertex.y);
-    result[Direction::WEST] =
-        Position_T((vertex.x + width - 1) % width, vertex.y);
+  Neighbour_T Neighbours(const Position_T &vertex) {
+    Neighbour_T result;
+
+    const auto &x = vertex.x;
+    const auto &y = vertex.y;
+
+    result.north = Position_T(x, (y + height - 1) % height);
+    result.south = Position_T(x, (y + height + 1) % height);
+    result.east = Position_T((x + width + 1) % width, y);
+    result.west = Position_T((x + width - 1) % width, y);
+
+    if (x == 0 && y == 0) {
+      result.boundary = Boundary_T(Direction::NW, boundary_type);
+      return result;
+    }
+    if (x == 0 && y == height) {
+      result.boundary = Boundary_T(Direction::SW, boundary_type);
+      return result;
+    }
+    if (x == 0) {
+      result.boundary = Boundary_T(Direction::W, boundary_type);
+      return result;
+    }
+
+    if (x == width && y == 0) {
+      result.boundary = Boundary_T(Direction::NE, boundary_type);
+      return result;
+    }
+    if (x == width && y == height) {
+      result.boundary = Boundary_T(Direction::SE, boundary_type);
+      return result;
+    }
+    if (x == width) {
+      result.boundary = Boundary_T(Direction::E, boundary_type);
+      return result;
+    }
+
+    if (y == 0) {
+      result.boundary = Boundary_T(Direction::N, boundary_type);
+      return result;
+    }
+    if (y == height) {
+      result.boundary = Boundary_T(Direction::S, boundary_type);
+      return result;
+    }
+
     return result;
   }
 
@@ -108,35 +169,121 @@ private:
     });
   }
 
+  void streamingOperator_reflect() {
+    const Sol::Matrix<Element_T> copied_velocities(velocities);
+    std::for_each(
+        velocities.begin(), velocities.end(),
+        [&copied_velocities, this](Element_T &elem) {
+          Neighbour_T &neighbours = neighbours_cache(elem.pos.x, elem.pos.y);
+          switch (neighbours.boundary->direction) {
+          case Direction::N:
+            elem.south = elem.north;
+            elem.north =
+                copied_velocities(neighbours.south.x, neighbours.south.y).north;
+            elem.east =
+                copied_velocities(neighbours.west.x, neighbours.west.y).east;
+            elem.west =
+                copied_velocities(neighbours.east.x, neighbours.east.y).west;
+            break;
+          case Direction::NE:
+            elem.south = elem.north;
+            elem.north =
+                copied_velocities(neighbours.south.x, neighbours.south.y).north;
+            elem.east =
+                copied_velocities(neighbours.west.x, neighbours.west.y).east;
+            elem.west = elem.east;
+            break;
+          case Direction::E:
+            elem.west = elem.east;
+            elem.east =
+                copied_velocities(neighbours.west.x, neighbours.west.y).east;
+            elem.north =
+                copied_velocities(neighbours.south.x, neighbours.south.y).north;
+            elem.south =
+                copied_velocities(neighbours.north.x, neighbours.north.y).south;
+            break;
+          case Direction::SE:
+            elem.north = elem.south;
+            elem.south =
+                copied_velocities(neighbours.north.x, neighbours.north.y).south;
+            elem.west = elem.east;
+            elem.east =
+                copied_velocities(neighbours.west.x, neighbours.west.y).east;
+            break;
+          case Direction::S:
+            elem.north = elem.south;
+            elem.south =
+                copied_velocities(neighbours.north.x, neighbours.north.y).south;
+            elem.east =
+                copied_velocities(neighbours.west.x, neighbours.west.y).east;
+            elem.west =
+                copied_velocities(neighbours.east.x, neighbours.east.y).west;
+            break;
+          case Direction::SW:
+            elem.north = elem.south;
+            elem.south =
+                copied_velocities(neighbours.north.x, neighbours.north.y).south;
+            elem.east = elem.west;
+            elem.west =
+                copied_velocities(neighbours.east.x, neighbours.east.y).west;
+            break;
+          case Direction::W:
+            elem.east = elem.west;
+            elem.west =
+                copied_velocities(neighbours.east.x, neighbours.east.y).west;
+            elem.north =
+                copied_velocities(neighbours.south.x, neighbours.south.y).north;
+            elem.south =
+                copied_velocities(neighbours.north.x, neighbours.north.y).south;
+            break;
+          case Direction::NW:
+            elem.east = elem.west;
+            elem.west =
+                copied_velocities(neighbours.east.x, neighbours.east.y).west;
+            elem.south = elem.north;
+            elem.north =
+                copied_velocities(neighbours.south.x, neighbours.south.y).north;
+            break;
+          default:
+            elem.north =
+                copied_velocities(neighbours.south.x, neighbours.south.y).north;
+            elem.south =
+                copied_velocities(neighbours.north.x, neighbours.north.y).south;
+            elem.east =
+                copied_velocities(neighbours.west.x, neighbours.west.y).east;
+            elem.west =
+                copied_velocities(neighbours.east.x, neighbours.east.y).west;
+            break;
+          }
+        });
+  }
+
   void streamingOperator() {
-    Sol::Matrix<Element_T> copied_velocities(velocities);
-    std::for_each(velocities.begin(), velocities.end(),
-                  [&copied_velocities, this](Element_T &elem) {
-                    auto neighbours = Neighbours(elem.pos);
-                    elem.north =
-                        copied_velocities(neighbours[Direction::SOUTH].x,
-                                          neighbours[Direction::SOUTH].y)
-                            .north;
-                    elem.south =
-                        copied_velocities(neighbours[Direction::NORTH].x,
-                                          neighbours[Direction::NORTH].y)
-                            .south;
-                    elem.east = copied_velocities(neighbours[Direction::WEST].x,
-                                                  neighbours[Direction::WEST].y)
-                                    .east;
-                    elem.west = copied_velocities(neighbours[Direction::EAST].x,
-                                                  neighbours[Direction::EAST].y)
-                                    .west;
-                  });
+    const Sol::Matrix<Element_T> copied_velocities(velocities);
+    std::for_each(
+        velocities.begin(), velocities.end(),
+        [&copied_velocities, this](Element_T &elem) {
+          Neighbour_T &neighbours = neighbours_cache(elem.pos.x, elem.pos.y);
+          elem.north =
+              copied_velocities(neighbours.south.x, neighbours.south.y).north;
+          elem.south =
+              copied_velocities(neighbours.north.x, neighbours.north.y).south;
+          elem.east =
+              copied_velocities(neighbours.west.x, neighbours.west.y).east;
+          elem.west =
+              copied_velocities(neighbours.east.x, neighbours.east.y).west;
+        });
   }
 
   Sol::Matrix<Element_T> velocities;
-  int height;
-  int width;
+  size_t height;
+  size_t width;
+  Sol::Matrix<Neighbour_T> neighbours_cache;
+  BoundaryType boundary_type;
 };
 
 using uchar = unsigned char;
-cv::Mat to_render(Sol::Matrix<int> mass) {
+cv::Mat to_render(const Sol::Matrix<size_t> &mass) {
   cv::Mat im(cv::Size(mass.num_cols(), mass.num_rows()), CV_8UC1);
   auto to_format = [](size_t i) {
     return static_cast<uchar>(i * std::numeric_limits<uchar>::max() / 4);
@@ -145,38 +292,40 @@ cv::Mat to_render(Sol::Matrix<int> mass) {
   return im;
 }
 
-constexpr int width = 99;
-constexpr int height = 99;
+constexpr size_t width = 400;
+constexpr size_t height = 400;
+constexpr double fps = 30;
+constexpr size_t duration_s = 20;
 
 bool random_bool() {
   auto x = std::rand();
-  return x < RAND_MAX / 8;
+  return x < RAND_MAX / 3;
 }
 
 int main() {
   using namespace std::chrono_literals;
 
-  Sol::Matrix<ParticleGraph::Element_T> init(width, height);
-  for (int x = 0; x < width; ++x) {
-    for (int y = 0; y < height; ++y) {
-      init(x, y) = ParticleGraph::Element_T(ParticleGraph::Position_T(x, y),
-                                            random_bool(), random_bool(),
-                                            random_bool(), random_bool());
+  Sol::Matrix<ParticleGraph::Element_T> init(height, width);
+  for (size_t x = 0; x < width; ++x) {
+    for (size_t y = 0; y < height; ++y) {
+      if (!(x > width / 16 && x < width / 2 && y > height / 16 &&
+            y < height / 2))
+        init(x, y) = ParticleGraph::Element_T(ParticleGraph::Position_T(x, y),
+                                              random_bool(), random_bool(),
+                                              random_bool(), random_bool());
+      else
+        init(x, y) = ParticleGraph::Element_T(ParticleGraph::Position_T(x, y));
     }
   }
-
-  init(width / 2, height / 2).north = true;
-  init(width / 2, height / 2).south = true;
-  init(width / 2, height / 2).east = true;
-  init(width / 2, height / 2).west = true;
-  ParticleGraph PG(init, width, height);
+  ParticleGraph PG(init, width, height, ParticleGraph::BoundaryType::PERIODIC);
 
   cv::VideoWriter output;
   auto inImg = to_render(PG.GetMass());
   output.open("build/live1.mp4", cv::VideoWriter::fourcc('a', 'v', 'c', '1'),
-              15.0, inImg.size(), false);
+              fps, inImg.size(), false);
 
-  for (size_t i = 0; i < 15 * 60; ++i) {
+  for (size_t i = 0; i < static_cast<size_t>(fps * duration_s); ++i) {
+    std::cout << i << std::endl;
     auto vis = PG.GetMass();
     output.write(to_render(PG.GetMass()));
     PG.Update();
