@@ -51,6 +51,10 @@ public:
   struct Position_T {
     Position_T() = default;
     Position_T(size_t x, size_t y) : x(x), y(y) {}
+    friend std::ostream &operator<<(std::ostream &out, const Position_T &me) {
+      out << "(" << me.x << ", " << me.y << ")";
+      return out;
+    }
     size_t x;
     size_t y;
   };
@@ -58,6 +62,35 @@ public:
   struct Boundary_T {
     Boundary_T(Direction direction, BoundaryType type)
         : direction(direction), type(type) {}
+    friend std::ostream &operator<<(std::ostream &out, const Boundary_T &me) {
+      switch (me.direction) {
+      case Direction::N:
+        out << "N";
+        break;
+      case Direction::NE:
+        out << "NE";
+        break;
+      case Direction::E:
+        out << "E";
+        break;
+      case Direction::SE:
+        out << "SE";
+        break;
+      case Direction::S:
+        out << "S";
+        break;
+      case Direction::SW:
+        out << "SW";
+        break;
+      case Direction::W:
+        out << "W";
+        break;
+      case Direction::NW:
+        out << "NW";
+        break;
+      }
+      return out;
+    }
     Direction direction;
     BoundaryType type;
   };
@@ -67,6 +100,13 @@ public:
     Position_T south;
     Position_T east;
     Position_T west;
+    friend std::ostream &operator<<(std::ostream &out, const Neighbour_T &me) {
+      out << me.north << ", " << me.east << ", " << me.south << ", " << me.west
+          << "|";
+      if (me.boundary.has_value())
+        out << me.boundary.value();
+      return out;
+    }
     std::optional<Boundary_T> boundary;
   };
 
@@ -87,9 +127,11 @@ public:
     size_t mass() const { return north + south + east + west; }
   };
 
-  ParticleGraph(Sol::Matrix<Element_T> initial_matrix, size_t height,
-                size_t width, BoundaryType boundary_type)
-      : velocities(initial_matrix), height(height), width(width),
+  ParticleGraph(size_t height, size_t width,
+                Sol::Matrix<Element_T> initial_matrix,
+                BoundaryType boundary_type)
+      : height(height), width(width), velocities(initial_matrix),
+        copied_velocities(width, height),
         neighbours_cache(Sol::Matrix<Neighbour_T>(width, height)),
         boundary_type(boundary_type) {
     std::for_each(
@@ -104,7 +146,7 @@ public:
   }
 
   Sol::Matrix<size_t> GetMass() {
-    Sol::Matrix<size_t> result(height, width);
+    Sol::Matrix<size_t> result(width, height);
     std::transform(velocities.begin(), velocities.end(), result.begin(),
                    [](const Element_T &elem) { return elem.mass(); });
     return result;
@@ -126,25 +168,17 @@ private:
       result.boundary = Boundary_T(Direction::NW, boundary_type);
       return result;
     }
-    if (x == 0 && y == height) {
+    if (x == 0 && y == height - 1) {
       result.boundary = Boundary_T(Direction::SW, boundary_type);
       return result;
     }
-    if (x == 0) {
-      result.boundary = Boundary_T(Direction::W, boundary_type);
-      return result;
-    }
 
-    if (x == width && y == 0) {
+    if (x == width - 1 && y == 0) {
       result.boundary = Boundary_T(Direction::NE, boundary_type);
       return result;
     }
-    if (x == width && y == height) {
+    if (x == width - 1 && y == height - 1) {
       result.boundary = Boundary_T(Direction::SE, boundary_type);
-      return result;
-    }
-    if (x == width) {
-      result.boundary = Boundary_T(Direction::E, boundary_type);
       return result;
     }
 
@@ -152,8 +186,16 @@ private:
       result.boundary = Boundary_T(Direction::N, boundary_type);
       return result;
     }
-    if (y == height) {
+    if (y == height - 1) {
       result.boundary = Boundary_T(Direction::S, boundary_type);
+      return result;
+    }
+    if (x == 0) {
+      result.boundary = Boundary_T(Direction::W, boundary_type);
+      return result;
+    }
+    if (x == width - 1) {
+      result.boundary = Boundary_T(Direction::E, boundary_type);
       return result;
     }
 
@@ -175,76 +217,7 @@ private:
         velocities.begin(), velocities.end(),
         [&copied_velocities, this](Element_T &elem) {
           Neighbour_T &neighbours = neighbours_cache(elem.pos.x, elem.pos.y);
-          switch (neighbours.boundary->direction) {
-          case Direction::N:
-            elem.south = elem.north;
-            elem.north =
-                copied_velocities(neighbours.south.x, neighbours.south.y).north;
-            elem.east =
-                copied_velocities(neighbours.west.x, neighbours.west.y).east;
-            elem.west =
-                copied_velocities(neighbours.east.x, neighbours.east.y).west;
-            break;
-          case Direction::NE:
-            elem.south = elem.north;
-            elem.north =
-                copied_velocities(neighbours.south.x, neighbours.south.y).north;
-            elem.east =
-                copied_velocities(neighbours.west.x, neighbours.west.y).east;
-            elem.west = elem.east;
-            break;
-          case Direction::E:
-            elem.west = elem.east;
-            elem.east =
-                copied_velocities(neighbours.west.x, neighbours.west.y).east;
-            elem.north =
-                copied_velocities(neighbours.south.x, neighbours.south.y).north;
-            elem.south =
-                copied_velocities(neighbours.north.x, neighbours.north.y).south;
-            break;
-          case Direction::SE:
-            elem.north = elem.south;
-            elem.south =
-                copied_velocities(neighbours.north.x, neighbours.north.y).south;
-            elem.west = elem.east;
-            elem.east =
-                copied_velocities(neighbours.west.x, neighbours.west.y).east;
-            break;
-          case Direction::S:
-            elem.north = elem.south;
-            elem.south =
-                copied_velocities(neighbours.north.x, neighbours.north.y).south;
-            elem.east =
-                copied_velocities(neighbours.west.x, neighbours.west.y).east;
-            elem.west =
-                copied_velocities(neighbours.east.x, neighbours.east.y).west;
-            break;
-          case Direction::SW:
-            elem.north = elem.south;
-            elem.south =
-                copied_velocities(neighbours.north.x, neighbours.north.y).south;
-            elem.east = elem.west;
-            elem.west =
-                copied_velocities(neighbours.east.x, neighbours.east.y).west;
-            break;
-          case Direction::W:
-            elem.east = elem.west;
-            elem.west =
-                copied_velocities(neighbours.east.x, neighbours.east.y).west;
-            elem.north =
-                copied_velocities(neighbours.south.x, neighbours.south.y).north;
-            elem.south =
-                copied_velocities(neighbours.north.x, neighbours.north.y).south;
-            break;
-          case Direction::NW:
-            elem.east = elem.west;
-            elem.west =
-                copied_velocities(neighbours.east.x, neighbours.east.y).west;
-            elem.south = elem.north;
-            elem.north =
-                copied_velocities(neighbours.south.x, neighbours.south.y).north;
-            break;
-          default:
+          if (!neighbours.boundary.has_value()) {
             elem.north =
                 copied_velocities(neighbours.south.x, neighbours.south.y).north;
             elem.south =
@@ -253,16 +226,108 @@ private:
                 copied_velocities(neighbours.west.x, neighbours.west.y).east;
             elem.west =
                 copied_velocities(neighbours.east.x, neighbours.east.y).west;
-            break;
+          } else {
+
+            switch (neighbours.boundary->direction) {
+            case Direction::N:
+              elem.south = elem.north;
+              elem.north =
+                  copied_velocities(neighbours.south.x, neighbours.south.y)
+                      .north;
+              elem.east =
+                  copied_velocities(neighbours.west.x, neighbours.west.y).east;
+              elem.west =
+                  copied_velocities(neighbours.east.x, neighbours.east.y).west;
+              break;
+            case Direction::NE:
+              elem.south = elem.north;
+              elem.north =
+                  copied_velocities(neighbours.south.x, neighbours.south.y)
+                      .north;
+              elem.east =
+                  copied_velocities(neighbours.west.x, neighbours.west.y).east;
+              elem.west = elem.east;
+              break;
+            case Direction::E:
+              elem.west = elem.east;
+              elem.east =
+                  copied_velocities(neighbours.west.x, neighbours.west.y).east;
+              elem.north =
+                  copied_velocities(neighbours.south.x, neighbours.south.y)
+                      .north;
+              elem.south =
+                  copied_velocities(neighbours.north.x, neighbours.north.y)
+                      .south;
+              break;
+            case Direction::SE:
+              elem.north = elem.south;
+              elem.south =
+                  copied_velocities(neighbours.north.x, neighbours.north.y)
+                      .south;
+              elem.west = elem.east;
+              elem.east =
+                  copied_velocities(neighbours.west.x, neighbours.west.y).east;
+              break;
+            case Direction::S:
+              elem.north = elem.south;
+              elem.south =
+                  copied_velocities(neighbours.north.x, neighbours.north.y)
+                      .south;
+              elem.east =
+                  copied_velocities(neighbours.west.x, neighbours.west.y).east;
+              elem.west =
+                  copied_velocities(neighbours.east.x, neighbours.east.y).west;
+              break;
+            case Direction::SW:
+              elem.north = elem.south;
+              elem.south =
+                  copied_velocities(neighbours.north.x, neighbours.north.y)
+                      .south;
+              elem.east = elem.west;
+              elem.west =
+                  copied_velocities(neighbours.east.x, neighbours.east.y).west;
+              break;
+            case Direction::W:
+              elem.east = elem.west;
+              elem.west =
+                  copied_velocities(neighbours.east.x, neighbours.east.y).west;
+              elem.north =
+                  copied_velocities(neighbours.south.x, neighbours.south.y)
+                      .north;
+              elem.south =
+                  copied_velocities(neighbours.north.x, neighbours.north.y)
+                      .south;
+              break;
+            case Direction::NW:
+              elem.east = elem.west;
+              elem.west =
+                  copied_velocities(neighbours.east.x, neighbours.east.y).west;
+              elem.south = elem.north;
+              elem.north =
+                  copied_velocities(neighbours.south.x, neighbours.south.y)
+                      .north;
+              break;
+            default:
+              elem.north =
+                  copied_velocities(neighbours.south.x, neighbours.south.y)
+                      .north;
+              elem.south =
+                  copied_velocities(neighbours.north.x, neighbours.north.y)
+                      .south;
+              elem.east =
+                  copied_velocities(neighbours.west.x, neighbours.west.y).east;
+              elem.west =
+                  copied_velocities(neighbours.east.x, neighbours.east.y).west;
+              break;
+            }
           }
         });
   }
 
   void streamingOperator() {
-    const Sol::Matrix<Element_T> copied_velocities(velocities);
+    std::swap(this->velocities, copied_velocities);
     std::for_each(
-        velocities.begin(), velocities.end(),
-        [&copied_velocities, this](Element_T &elem) {
+        velocities.begin(), velocities.end(), [this](Element_T &elem) {
           Neighbour_T &neighbours = neighbours_cache(elem.pos.x, elem.pos.y);
           elem.north =
               copied_velocities(neighbours.south.x, neighbours.south.y).north;
@@ -275,9 +340,10 @@ private:
         });
   }
 
-  Sol::Matrix<Element_T> velocities;
   size_t height;
   size_t width;
+  Sol::Matrix<Element_T> velocities;
+  Sol::Matrix<Element_T> copied_velocities;
   Sol::Matrix<Neighbour_T> neighbours_cache;
   BoundaryType boundary_type;
 };
@@ -292,9 +358,9 @@ cv::Mat to_render(const Sol::Matrix<size_t> &mass) {
   return im;
 }
 
-constexpr size_t width = 400;
-constexpr size_t height = 400;
-constexpr double fps = 30;
+constexpr size_t width = 1000;
+constexpr size_t height = 1000;
+constexpr double fps = 60;
 constexpr size_t duration_s = 20;
 
 bool random_bool() {
@@ -317,7 +383,8 @@ int main() {
         init(x, y) = ParticleGraph::Element_T(ParticleGraph::Position_T(x, y));
     }
   }
-  ParticleGraph PG(init, width, height, ParticleGraph::BoundaryType::PERIODIC);
+
+  ParticleGraph PG(width, height, init, ParticleGraph::BoundaryType::PERIODIC);
 
   cv::VideoWriter output;
   auto inImg = to_render(PG.GetMass());
@@ -325,7 +392,8 @@ int main() {
               fps, inImg.size(), false);
 
   for (size_t i = 0; i < static_cast<size_t>(fps * duration_s); ++i) {
-    std::cout << i << std::endl;
+    if (i % static_cast<size_t>(fps) == 0)
+      std::cout << (i / fps) + 1 << std::endl;
     auto vis = PG.GetMass();
     output.write(to_render(PG.GetMass()));
     PG.Update();
