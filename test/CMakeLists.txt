@@ -9,8 +9,11 @@ add_executable(
 )
 target_link_libraries(
   all_tests
-  GTest::gtest_main
+  gtest_main
+  gtest
+  pthread
 )
+# On Arch: GTest::gtest_main
 
 include(GoogleTest)
 gtest_discover_tests(all_tests)
