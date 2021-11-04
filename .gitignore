@@ -2,3 +2,5 @@ Debug/
 build/*
 .clangd/
 reference/
+.cache/
+Testing/
